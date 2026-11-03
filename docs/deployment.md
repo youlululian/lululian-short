@@ -12,6 +12,8 @@ bash scripts/start.sh
 
 Docker 使用名为 `studio-data` 的持久卷。备份此卷即可保留数据库、配置和素材。停止服务时使用 `docker compose down`；不要加 `-v`，否则会删除数据。
 
+本地验收环境未启动 Docker daemon，因此已校验 Compose 配置，但未声称完成镜像构建与容器运行验收。
+
 单机第一版只允许一个 API 进程。不要设置多个 Uvicorn workers 或多个共享 SQLite 的副本。项目任务、版本和评审记录持久化；进程中断后任务标记为失败，人工重试。H3 已返回任务 ID 的请求会继续轮询。提交请求本身超时时，远端是否创建任务无法确定，应先检查服务商记录，不能假设跨网络 exactly-once。
 
 ## 云端组合

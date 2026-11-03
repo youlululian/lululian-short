@@ -48,6 +48,8 @@ python training/train_judge.py --data .data/datasets/judge --execute
 
 训练只对 assistant 评审输出计算损失，冻结视觉编码器，使用 LoRA、BF16 和梯度检查点，按 epoch 保存与评估。默认 batch size 1，累积 8 步。不支持在本机无 CUDA 环境直接启动此训练。
 
+在支持 Qwen3-VL LoRA 的 vLLM 环境中，可通过 `JUDGE_LORA_PATH=/path/to/adapter bash scripts/serve-local-judge.sh` 加载 adapter，并在工作台将视频 Judge 模型 ID 改为 `judge-lora`。仍需先通过实际推理兼容性测试；保持原模型名称即可回退。
+
 ## 评测与上线
 
 将留出集推理结果存为 `{id, review}` JSONL，计算指标：

@@ -27,7 +27,7 @@ test('create, generate, review, approve and produce storyboard images', async ({
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('button', { name: '完成编辑' }).click()
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.screenshot({ path: 'test-results/mobile.png', fullPage: true })
+    await page.screenshot({ path: 'test-results/mobile.png', fullPage: false })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
     expect(errors).toEqual([])
   } finally {

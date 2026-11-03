@@ -1356,6 +1356,22 @@ function Workspace({
                         >
                           下载 SRT
                         </a>
+                        <button
+                          className="secondary"
+                          disabled={
+                            busy ||
+                            mode === "demo" ||
+                            j.result?.revision !== project.revision
+                          }
+                          onClick={() =>
+                            void runJob("video_judge", {
+                              export_id: j.result?.video?.replace(".mp4", ""),
+                            })
+                          }
+                        >
+                          <ShieldCheck size={15} />
+                          评审此成片
+                        </button>
                       </div>
                     </div>
                   </article>
@@ -1727,6 +1743,16 @@ function ShotEditor({
               </label>
             </div>
             <div className="character-picks">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={shot.use_video_audio}
+                  onChange={(e) =>
+                    change({ use_video_audio: e.target.checked })
+                  }
+                />
+                保留视频原音轨（单独配音优先）
+              </label>
               {characters.map((c) => (
                 <label key={c.id}>
                   <input
