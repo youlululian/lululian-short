@@ -95,3 +95,7 @@ flowchart LR
 [部署指南](docs/deployment.md) · [训练与迭代](training/README.md)
 
 工业级是工程方向，不是已通过大规模生产验收的承诺。本版尚无多租户权限、分布式队列、集群高可用或服务 SLA，默认面向单用户本地制作。适合先建立可复现的制作与评审基线，再按负载扩展。
+
+## 联系方式
+
+联系邮箱：[lululian2026@126.com](mailto:lululian2026@126.com)。
