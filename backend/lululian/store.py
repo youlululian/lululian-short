@@ -7,6 +7,7 @@ from threading import RLock
 
 from fastapi import HTTPException
 
+from .judge import content_hash
 from .models import ProjectDocument, new_id
 
 
@@ -70,7 +71,10 @@ class Store:
                 "INSERT INTO projects VALUES (?, ?, 1, ?, ?)",
                 (pid, document.model_dump_json(), timestamp, timestamp),
             )
-            db.execute("INSERT INTO revisions VALUES (?,?,?,?)", (pid, 1, document.model_dump_json(), timestamp))
+            db.execute(
+                "INSERT INTO revisions VALUES (?,?,?,?)",
+                (pid, 1, document.model_dump_json(), timestamp),
+            )
         return self.get(pid)
 
     def get(self, pid):
@@ -78,12 +82,21 @@ class Store:
             row = db.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
         if not row:
             raise HTTPException(404, "项目不存在")
-        return {**dict(row), "document": json.loads(row["document"])}
+        return self.project_dict(row)
+
+    @staticmethod
+    def project_dict(row):
+        document = ProjectDocument.model_validate_json(row["document"])
+        return {
+            **dict(row),
+            "document": document.model_dump(),
+            "content_hash": content_hash(document),
+        }
 
     def list(self):
         with self.connect() as db:
             rows = db.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
-        return [{**dict(r), "document": json.loads(r["document"])} for r in rows]
+        return [self.project_dict(r) for r in rows]
 
     def save(self, pid, document, revision=None, worker=False):
         with self.connect() as db:

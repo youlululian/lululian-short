@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { api, post } from "./api";
+import { ModelSetupAssistant } from "./ModelSetupAssistant";
 import { PipelinePanel } from "./PipelinePanel";
 import {
   Character,
@@ -57,7 +58,8 @@ const sample: ProjectInput = {
   aspect: "9:16",
   episode_count: 1,
 };
-type Tab = "story" | "characters" | "shots" | "review" | "exports";
+type Tab =
+  "pipelines" | "story" | "characters" | "shots" | "review" | "exports";
 type Notify = (message: string) => void;
 
 export default function App() {
@@ -190,7 +192,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="status-dot" />
           <span>本地工作空间</span>
-          <small>v0.1</small>
+          <small>V2 · 0.2.0</small>
         </div>
       </aside>
       <main>
@@ -583,7 +585,7 @@ function Workspace({
 }) {
   const [document, setDocument] = useState<Document>(project.document);
   const [baseRevision, setBaseRevision] = useState(project.revision);
-  const [tab, setTab] = useState<Tab>("story");
+  const [tab, setTab] = useState<Tab>("pipelines");
   const [episodeIndex, setEpisodeIndex] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -645,7 +647,8 @@ function Workspace({
     action(async () => {
       await save();
       await requestJob(project.id, { kind, ...extra });
-      if (kind === "judge" || kind === "asset_check") setTab("review");
+      if (tab !== "pipelines" && (kind === "judge" || kind === "asset_check"))
+        setTab("review");
       notify(`${jobNames[kind]}任务已提交`);
     });
   const generateScript = () => {
@@ -675,7 +678,14 @@ function Workspace({
       j.status === "succeeded" &&
       j.result?.video,
   );
+  const approve = () =>
+    void action(async () => {
+      const p = await api<Project>(`/projects/${project.id}/approve`, post({}));
+      onSave(p);
+      notify("当前剧本版本已确认，可以生成素材");
+    });
   const tabs: { id: Tab; name: string; icon: typeof Film }[] = [
+    { id: "pipelines", name: "流水线控制台", icon: Play },
     { id: "story", name: "故事剧本", icon: Clapperboard },
     { id: "characters", name: "角色设定", icon: Users },
     { id: "shots", name: "分镜工作台", icon: Film },
@@ -741,7 +751,9 @@ function Workspace({
                 className={
                   i === 0 ||
                   (i === 1 && latestReview) ||
-                  (i === 2 && document.approved_hash) ||
+                  (i === 2 &&
+                    !dirty &&
+                    document.approved_hash === project.content_hash) ||
                   (i === 3 && shots.some((s) => s.image)) ||
                   (i === 4 && exports.length)
                     ? "done"
@@ -780,6 +792,25 @@ function Workspace({
       </nav>
       <div className="workspace-body">
         <section className="workspace-content">
+          {tab === "pipelines" && (
+            <PipelinePanel
+              project={{ ...project, document }}
+              jobs={jobs}
+              episode={episode}
+              busy={busy}
+              dirty={dirty}
+              mode={mode}
+              runJob={runJob}
+              notify={notify}
+              selectEpisode={(id) =>
+                setEpisodeIndex(document.episodes.findIndex((e) => e.id === id))
+              }
+              navigate={setTab}
+              approve={approve}
+              generateScript={generateScript}
+              onSaved={onSave}
+            />
+          )}
           <fieldset disabled={busy} className="editor-fieldset">
             {tab === "story" && (
               <div className="story-editor">
@@ -1226,7 +1257,11 @@ function Workspace({
                   </p>
                   <button
                     className="secondary"
-                    disabled={!latestReview || dirty}
+                    disabled={
+                      !latestReview ||
+                      dirty ||
+                      latestReview.result?.content_hash !== project.content_hash
+                    }
                     onClick={() =>
                       void action(async () => {
                         const p = await api<Project>(
@@ -1261,15 +1296,6 @@ function Workspace({
                 <ReviewPanel
                   review={assetReview}
                   empty="尚未检查素材。技术检查通过不代表内容质量通过。"
-                />
-                <PipelinePanel
-                  project={project}
-                  jobs={jobs}
-                  episode={episode}
-                  busy={busy}
-                  mode={mode}
-                  runJob={runJob}
-                  notify={notify}
                 />
               </>
             )}
@@ -1816,6 +1842,7 @@ function SettingsView({
 }) {
   const [value, setValue] = useState(settings);
   const [busy, setBusy] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
   return (
     <div className="settings-page">
       <div className="page-heading">
@@ -1825,6 +1852,15 @@ function SettingsView({
           <p>让适合的模型，负责适合的创作环节。</p>
         </div>
       </div>
+      <ModelSetupAssistant
+        settings={settings}
+        onSaved={(next) => {
+          onSaved(next);
+          setValue(next);
+        }}
+        onBusy={setAgentBusy}
+        notify={notify}
+      />
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -1856,224 +1892,230 @@ function SettingsView({
           }
         }}
       >
-        <div className="mode-options">
-          <button
-            type="button"
-            className={value.mode === "demo" ? "selected" : ""}
-            onClick={() => setValue({ ...value, mode: "demo" })}
-          >
-            <Sparkles />
-            <strong>演示模式</strong>
-            <p>固定示例、占位画面，无外部调用。</p>
-            {value.mode === "demo" && <Check size={18} />}
-          </button>
-          <button
-            type="button"
-            className={value.mode === "live" ? "selected" : ""}
-            onClick={() => setValue({ ...value, mode: "live" })}
-          >
-            <WandSparkles />
-            <strong>真实生成</strong>
-            <p>使用你的模型接口，按服务商标准计费。</p>
-            {value.mode === "live" && <Check size={18} />}
-          </button>
-        </div>
-        <div className="notice">
-          <LockKeyhole size={16} />
-          <span>
-            密钥只保存在本机服务端，不会回传给页面。留空保留已有密钥。API
-            地址请包含版本路径（例如 /v1）。
-          </span>
-        </div>
-        {(
-          [
-            {
-              key: "text",
-              title: "剧本模型",
-              sub: "创作故事、角色与分镜 · Chat Completions",
-            },
-            {
-              key: "judge",
-              title: "剧本 Judge",
-              sub: "独立评审剧本 · 留空模型名称时使用剧本模型，不评审图片和视频",
-            },
-            {
-              key: "image",
-              title: "画面模型",
-              sub: "生成分镜图片 · Images Generations",
-            },
-            {
-              key: "voice",
-              title: "配音模型",
-              sub: "把台词变成声音 · Audio Speech",
-            },
-            {
-              key: "vision",
-              title: "视频 Judge",
-              sub: "对照剧本评审实际视频 · 本地 Qwen-VL / Gemini",
-            },
-            {
-              key: "video",
-              title: "MiniMax H3 视频生成",
-              sub: "本地 SGLang H3 服务 / MiniMax 官方 API",
-            },
-          ] as const
-        ).map(({ key, title, sub }) => (
-          <section className="provider-card" key={key}>
-            <div className="section-heading">
-              <div>
-                <h2>{title}</h2>
-                <p>{sub}</p>
-              </div>
-              <span
-                className={`config-badge ${value[key].configured ? "configured" : ""}`}
-              >
-                {value[key].configured ? "已保存密钥" : "待配置"}
-              </span>
-            </div>
-            <label>
-              API 地址
-              <input
-                type="url"
-                required
-                value={value[key].base_url}
-                onChange={(e) =>
-                  setValue({
-                    ...value,
-                    [key]: { ...value[key], base_url: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <div className="form-grid">
-              <label>
-                模型名称
-                <input
-                  placeholder="填写服务商提供的模型 ID"
-                  value={value[key].model}
-                  onChange={(e) =>
-                    setValue({
-                      ...value,
-                      [key]: { ...value[key], model: e.target.value },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                API Key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder={
-                    value[key].configured
-                      ? "已保存，留空保持不变"
-                      : "输入 API Key"
-                  }
-                  value={value[key].api_key}
-                  onChange={(e) =>
-                    setValue({
-                      ...value,
-                      [key]: { ...value[key], api_key: e.target.value },
-                    })
-                  }
-                />
-              </label>
-            </div>
-            {key === "vision" && (
-              <label>
-                视频 Judge 部署方式
-                <select
-                  value={value.vision_backend}
-                  onChange={(e) =>
-                    setValue({
-                      ...value,
-                      vision_backend: e.target
-                        .value as Settings["vision_backend"],
-                      vision: {
-                        ...value.vision,
-                        base_url:
-                          e.target.value === "gemini"
-                            ? "https://generativelanguage.googleapis.com/v1beta"
-                            : "http://127.0.0.1:8001/v1",
-                        model:
-                          e.target.value === "gemini"
-                            ? ""
-                            : "Qwen/Qwen3-VL-8B-Instruct",
-                      },
-                    })
-                  }
+        <fieldset disabled={busy || agentBusy} className="editor-fieldset">
+          <div className="mode-options">
+            <button
+              type="button"
+              className={value.mode === "demo" ? "selected" : ""}
+              onClick={() => setValue({ ...value, mode: "demo" })}
+            >
+              <Sparkles />
+              <strong>演示模式</strong>
+              <p>固定示例、占位画面，无外部调用。</p>
+              {value.mode === "demo" && <Check size={18} />}
+            </button>
+            <button
+              type="button"
+              className={value.mode === "live" ? "selected" : ""}
+              onClick={() => setValue({ ...value, mode: "live" })}
+            >
+              <WandSparkles />
+              <strong>真实生成</strong>
+              <p>使用你的模型接口，按服务商标准计费。</p>
+              {value.mode === "live" && <Check size={18} />}
+            </button>
+          </div>
+          <div className="notice">
+            <LockKeyhole size={16} />
+            <span>
+              密钥只保存在本机服务端，不会回传给页面。留空保留已有密钥。API
+              地址请包含版本路径（例如 /v1）。
+            </span>
+          </div>
+          {(
+            [
+              {
+                key: "text",
+                title: "剧本模型",
+                sub: "创作故事、角色与分镜 · Chat Completions",
+              },
+              {
+                key: "judge",
+                title: "剧本 Judge",
+                sub: "独立评审剧本 · 留空模型名称时使用剧本模型，不评审图片和视频",
+              },
+              {
+                key: "image",
+                title: "画面模型",
+                sub: "生成分镜图片 · Images Generations",
+              },
+              {
+                key: "voice",
+                title: "配音模型",
+                sub: "把台词变成声音 · Audio Speech",
+              },
+              {
+                key: "vision",
+                title: "视频 Judge",
+                sub: "对照剧本评审实际视频 · 本地 Qwen-VL / Gemini",
+              },
+              {
+                key: "video",
+                title: "MiniMax H3 视频生成",
+                sub: "本地 SGLang H3 服务 / MiniMax 官方 API",
+              },
+            ] as const
+          ).map(({ key, title, sub }) => (
+            <section className="provider-card" key={key}>
+              <div className="section-heading">
+                <div>
+                  <h2>{title}</h2>
+                  <p>{sub}</p>
+                </div>
+                <span
+                  className={`config-badge ${value[key].configured ? "configured" : ""}`}
                 >
-                  <option value="local">本地 Qwen-VL（仅视觉）</option>
-                  <option value="gemini">Gemini API（视频与音轨）</option>
-                </select>
+                  {value[key].configured ? "已保存密钥" : "待配置"}
+                </span>
+              </div>
+              <label>
+                API 地址
+                <input
+                  type="url"
+                  required
+                  value={value[key].base_url}
+                  onChange={(e) =>
+                    setValue({
+                      ...value,
+                      [key]: { ...value[key], base_url: e.target.value },
+                    })
+                  }
+                />
               </label>
-            )}
-            {key === "video" && (
               <div className="form-grid">
                 <label>
-                  H3 部署方式
-                  <select
-                    value={value.video_backend}
+                  模型名称
+                  <input
+                    placeholder="填写服务商提供的模型 ID"
+                    value={value[key].model}
                     onChange={(e) =>
                       setValue({
                         ...value,
-                        video_backend: e.target
-                          .value as Settings["video_backend"],
-                        video: {
-                          ...value.video,
+                        [key]: { ...value[key], model: e.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  API Key
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={
+                      value[key].configured
+                        ? "已保存，留空保持不变"
+                        : "输入 API Key"
+                    }
+                    value={value[key].api_key}
+                    onChange={(e) =>
+                      setValue({
+                        ...value,
+                        [key]: { ...value[key], api_key: e.target.value },
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              {key === "vision" && (
+                <label>
+                  视频 Judge 部署方式
+                  <select
+                    value={value.vision_backend}
+                    onChange={(e) =>
+                      setValue({
+                        ...value,
+                        vision_backend: e.target
+                          .value as Settings["vision_backend"],
+                        vision: {
+                          ...value.vision,
                           base_url:
-                            e.target.value === "minimax"
-                              ? "https://api.minimax.io/v2"
-                              : "http://127.0.0.1:30010/v1",
+                            e.target.value === "gemini"
+                              ? "https://generativelanguage.googleapis.com/v1beta"
+                              : "http://127.0.0.1:8001/v1",
+                          model:
+                            e.target.value === "gemini"
+                              ? ""
+                              : "Qwen/Qwen3-VL-8B-Instruct",
                         },
                       })
                     }
                   >
-                    <option value="local">本地 SGLang</option>
-                    <option value="minimax">MiniMax 官方 API</option>
+                    <option value="local">本地 Qwen-VL（仅视觉）</option>
+                    <option value="gemini">Gemini API（视频与音轨）</option>
                   </select>
                 </label>
+              )}
+              {key === "video" && (
+                <div className="form-grid">
+                  <label>
+                    H3 部署方式
+                    <select
+                      value={value.video_backend}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          video_backend: e.target
+                            .value as Settings["video_backend"],
+                          video: {
+                            ...value.video,
+                            base_url:
+                              e.target.value === "minimax"
+                                ? "https://api.minimax.io/v2"
+                                : "http://127.0.0.1:30010/v1",
+                          },
+                        })
+                      }
+                    >
+                      <option value="local">本地 SGLang</option>
+                      <option value="minimax">MiniMax 官方 API</option>
+                    </select>
+                  </label>
+                  <label>
+                    云端分辨率
+                    <select
+                      value={value.video_resolution}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          video_resolution: e.target
+                            .value as Settings["video_resolution"],
+                        })
+                      }
+                    >
+                      <option>768P</option>
+                      <option>2K</option>
+                      <option>480P</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+              {key === "voice" && (
                 <label>
-                  云端分辨率
-                  <select
-                    value={value.video_resolution}
+                  音色 ID
+                  <input
+                    value={value.voice_name}
                     onChange={(e) =>
-                      setValue({
-                        ...value,
-                        video_resolution: e.target
-                          .value as Settings["video_resolution"],
-                      })
+                      setValue({ ...value, voice_name: e.target.value })
                     }
-                  >
-                    <option>768P</option>
-                    <option>2K</option>
-                    <option>480P</option>
-                  </select>
+                  />
                 </label>
-              </div>
-            )}
-            {key === "voice" && (
-              <label>
-                音色 ID
-                <input
-                  value={value.voice_name}
-                  onChange={(e) =>
-                    setValue({ ...value, voice_name: e.target.value })
-                  }
-                />
-              </label>
-            )}
-          </section>
-        ))}
-        <div className="settings-actions">
-          <p>
-            兼容协议因服务商而异。H3 与多模态 Judge 可连接本地服务或云端 API。
-          </p>
-          <button className="primary" disabled={busy}>
-            {busy ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-            保存设置
-          </button>
-        </div>
+              )}
+            </section>
+          ))}
+          <div className="settings-actions">
+            <p>
+              兼容协议因服务商而异。H3 与多模态 Judge 可连接本地服务或云端 API。
+            </p>
+            <button className="primary" disabled={busy}>
+              {busy ? (
+                <Loader2 size={16} className="spin" />
+              ) : (
+                <Save size={16} />
+              )}
+              保存设置
+            </button>
+          </div>
+        </fieldset>
       </form>
     </div>
   );

@@ -40,7 +40,10 @@ def save_settings(root: Path, settings: Settings):
     # Blank keys preserve a saved credential; never return credentials to the browser.
     old = load_settings(root)
     for kind in ("text", "image", "voice", "judge", "vision", "video"):
-        if not getattr(settings, kind).api_key:
+        if (
+            not getattr(settings, kind).api_key
+            and getattr(settings, kind).base_url == getattr(old, kind).base_url
+        ):
             getattr(settings, kind).api_key = getattr(old, kind).api_key
     path = root / "settings.json"
     temporary = path.with_suffix(".tmp")
@@ -69,7 +72,7 @@ def request(config: ProviderConfig, endpoint: str, payload: dict, binary=False):
         with httpx.Client(timeout=httpx.Timeout(180, connect=15), follow_redirects=False) as client:
             response = client.post(
                 f"{config.base_url}/{endpoint}",
-                headers={"Authorization": f"Bearer {config.api_key}"},
+                headers={"Authorization": f"Bearer {config.api_key}"} if config.api_key else {},
                 json={"model": config.model, **payload},
             )
         if not response.is_success:

@@ -7,12 +7,15 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .agent_routes import agent_router
 from .jobs import JobRunner
 from .judge import content_hash
+from .model_agent import ModelAgent
 from .models import JobInput, ProjectDocument, ProjectInput, SaveProject, Settings, new_id
 from .providers import load_settings, public_settings, save_settings
 from .render import normalize_image, probe
@@ -29,11 +32,27 @@ def create_app(data_dir: Path | None = None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.runner = JobRunner(store)
+        app.state.model_agent = ModelAgent(store)
         yield
+        app.state.model_agent.shutdown()
         app.state.runner.shutdown()
 
-    app = FastAPI(title="Lululian Short Studio", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Lululian Short Studio", version="0.2.0", lifespan=lifespan)
     app.state.store = store
+    app.include_router(agent_router(app, store))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, exc):
+        # Pydantic's input/context may contain submitted credentials. Never echo them.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in exc.errors()
+                ]
+            },
+        )
+
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"]
     )
@@ -63,7 +82,9 @@ def create_app(data_dir: Path | None = None):
 
     @app.put("/api/settings")
     def put_settings(settings: Settings):
-        save_settings(store.root, settings)
+        with app.state.model_agent.lock:
+            app.state.model_agent.ensure_idle()
+            save_settings(store.root, settings)
         return public_settings(load_settings(store.root))
 
     @app.get("/api/projects")
@@ -127,7 +148,9 @@ def create_app(data_dir: Path | None = None):
 
     @app.post("/api/projects/{pid}/jobs", status_code=202)
     def create_job(pid: str, body: JobInput):
-        return app.state.runner.submit(pid, body)
+        with app.state.model_agent.lock:
+            app.state.model_agent.ensure_no_setup()
+            return app.state.runner.submit(pid, body)
 
     @app.get("/api/projects/{pid}/jobs/{jid}/events")
     def job_events(pid: str, jid: str):

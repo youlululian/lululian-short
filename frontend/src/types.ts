@@ -44,6 +44,7 @@ export type Document = ProjectInput & {
 };
 export type Project = {
   id: string;
+  content_hash: string;
   revision: number;
   document: Document;
   created_at: string;
@@ -58,7 +59,8 @@ export type JobKind =
   | "asset_check"
   | "videos"
   | "video_judge"
-  | "pipeline";
+  | "pipeline"
+  | "prompt_tune";
 export type Job = {
   id: string;
   kind: JobKind;
@@ -71,6 +73,10 @@ export type Job = {
     episode_id: string | null;
     shot_id: string | null;
     overwrite: boolean;
+    export_id?: string | null;
+    feedback_id?: string | null;
+    max_calls?: number;
+    max_rounds?: number;
   };
   result: {
     video?: string;
@@ -85,6 +91,7 @@ export type Job = {
     summary?: string;
     passed?: boolean;
     content_hash?: string;
+    final_review?: VideoReview;
     reports?: { shot_id?: string; video: string; review: VideoReview }[];
     findings?: {
       severity: string;
@@ -123,12 +130,14 @@ export const jobNames: Record<JobKind, string> = {
   videos: "H3 视频生成",
   video_judge: "视频一致性评审",
   pipeline: "自动制作与返修",
+  prompt_tune: "人工反馈提示词调优",
 };
 export const uid = () => crypto.randomUUID().replaceAll("-", "");
 export const media = (pid: string, name: string | null | undefined) =>
   name ? `/media/${pid}/${name}` : "";
 
 export type VideoReview = {
+  passed: boolean;
   verdict: string;
   score: number;
   summary: string;

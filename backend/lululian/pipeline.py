@@ -1,5 +1,6 @@
 import json
 
+from .production_contracts import expected_shot
 from .providers import ProviderError, request
 from .render import render_episode
 from .video import generate_video
@@ -18,17 +19,6 @@ class Budget:
             "model_call",
             {"number": self.used, "limit": self.maximum, "stage": stage, "shot_id": shot_id},
         )
-
-
-def expected_shot(project, shot):
-    return {
-        "title": shot.title,
-        "scene": shot.scene,
-        "action": shot.visual,
-        "dialogue": shot.narration,
-        "style": project.style,
-        "characters": [c.model_dump() for c in project.characters if c.id in shot.characters],
-    }
 
 
 def revise_prompt(project, shot, report, settings):

@@ -97,12 +97,14 @@ class JobInput(Model):
         "videos",
         "video_judge",
         "pipeline",
+        "prompt_tune",
     ]
     episode_id: str | None = None
     shot_id: str | None = None
     overwrite: bool = False
     max_rounds: int = Field(default=2, ge=1, le=4)
     max_calls: int = Field(default=20, ge=1, le=100)
+    feedback_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     export_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 

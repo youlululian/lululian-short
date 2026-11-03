@@ -4,9 +4,12 @@ from threading import Lock
 
 from fastapi import HTTPException
 
+from .feedback import FeedbackStore
 from .judge import check_assets, content_hash, review_script
 from .models import JobInput, ProjectDocument, new_id
-from .pipeline import expected_shot, run_pipeline
+from .pipeline import run_pipeline
+from .production_contracts import expected_shot
+from .prompt_agent import optimize_prompt
 from .providers import ProviderError, generate_image, generate_script, generate_voice, load_settings
 from .render import media_duration, render_episode
 from .store import now
@@ -19,6 +22,7 @@ class JobRunner:
 
     def __init__(self, store):
         self.store = store
+        self.feedback = FeedbackStore(store)
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="studio")
         self.submit_lock = Lock()
         with store.connect() as db:
@@ -28,7 +32,7 @@ class JobRunner:
             )
 
     def submit(self, pid, task: JobInput):
-        with self.submit_lock:
+        with self.submit_lock, self.store.connect():
             project = ProjectDocument.model_validate(self.store.get(pid)["document"])
             settings = load_settings(self.store.root)
             shots = [s for e in project.episodes for s in e.shots]
@@ -56,6 +60,32 @@ class JobRunner:
                     "pipeline",
                 } and project.approved_hash != content_hash(project):
                     raise HTTPException(409, "请先执行剧本评审并人工确认当前版本，再生成素材或合成")
+            if task.kind == "prompt_tune":
+                if not task.feedback_id:
+                    raise HTTPException(422, "请选择反馈记录")
+                if settings.mode != "live":
+                    raise HTTPException(422, "提示词调优需要真实文本模型")
+                feedback = self.feedback.get(pid, task.feedback_id)
+                self.feedback.assert_current(pid, feedback)
+                if task.shot_id and task.shot_id != feedback["shot_id"]:
+                    raise HTTPException(422, "反馈与目标镜头不一致")
+                episode_id = next(
+                    e.id
+                    for e in project.episodes
+                    if any(s.id == feedback["shot_id"] for s in e.shots)
+                )
+                if task.episode_id and task.episode_id != episode_id:
+                    raise HTTPException(422, "反馈与目标剧集不一致")
+                task.shot_id, task.episode_id = feedback["shot_id"], episode_id
+                with self.store.connect() as db:
+                    attempts = db.execute(
+                        "SELECT COUNT(*) FROM jobs WHERE project_id=? AND kind='prompt_tune' AND json_extract(payload, '$.feedback_id')=?",
+                        (pid, task.feedback_id),
+                    ).fetchone()[0]
+                if attempts >= 3:
+                    raise HTTPException(
+                        409, "此条反馈已达到 3 次调优上限，请查看结果并提交新的人工反馈"
+                    )
             jid = new_id()
             try:
                 with self.store.connect() as db:
@@ -88,6 +118,33 @@ class JobRunner:
             elif task.kind == "asset_check":
                 progress(20, "正在检查素材是否可解码")
                 result = check_assets(project, directory)
+            elif task.kind == "prompt_tune":
+                feedback = self.feedback.get(pid, task.feedback_id)
+                history = [
+                    {
+                        "rating": f["rating"],
+                        "notes": f["notes"],
+                        "edited_prompt": f["edited_prompt"],
+                    }
+                    for f in reversed(self.feedback.list(pid))
+                    if f["shot_id"] == feedback["shot_id"] and f["id"] != feedback["id"]
+                ]
+                progress(15, "正在依据人工反馈优化视频提示词")
+                proposal = optimize_prompt(
+                    feedback["snapshot"]["script"],
+                    {k: feedback[k] for k in ("rating", "notes", "edited_prompt")},
+                    history,
+                    settings,
+                )
+                self.feedback.proposal(pid, task.feedback_id, proposal)
+                self.store.event(
+                    jid, "prompt_proposed", {"feedback_id": task.feedback_id, **proposal}
+                )
+                result = {
+                    "feedback_id": task.feedback_id,
+                    "proposal": proposal,
+                    "revision": self.store.get(pid)["revision"],
+                }
             elif task.kind == "pipeline":
                 result = run_pipeline(
                     project,
@@ -149,6 +206,7 @@ class JobRunner:
                     "scope": "video",
                     "reports": reports,
                     "passed": all(r["review"]["passed"] for r in reports),
+                    "revision": self.store.get(pid)["revision"],
                 }
             elif task.kind == "render":
                 episode = next(e for e in project.episodes if e.id == task.episode_id)

@@ -51,6 +51,16 @@ def download(url, target, key=""):
         raise ProviderError("生成视频下载失败，可重试下载已有任务") from exc
 
 
+def video_prompt(project, shot):
+    cast = "；".join(
+        f"{c.name}：{c.appearance}" for c in project.characters if c.id in shot.characters
+    )
+    return (
+        shot.video_prompt
+        or f"风格：{project.style}。场景：{shot.scene}。角色：{cast}。画面：{shot.visual}。运镜：{shot.camera}。对白/旁白：{shot.narration}。"
+    )
+
+
 def generate_video(project, shot, settings, directory, progress, nonce=""):
     if settings.mode != "live":
         raise ProviderError("H3 视频生成需要真实模式和已配置的本地服务或 API")
@@ -60,13 +70,7 @@ def generate_video(project, shot, settings, directory, progress, nonce=""):
         raise ProviderError("请先配置 MiniMax API Key")
     if not 4 <= shot.duration <= 15:
         raise ProviderError("H3 单镜头时长需要在 4–15 秒之间，请先修改并重新确认剧本")
-    cast = "；".join(
-        f"{c.name}：{c.appearance}" for c in project.characters if c.id in shot.characters
-    )
-    prompt = (
-        shot.video_prompt
-        or f"风格：{project.style}。场景：{shot.scene}。角色：{cast}。画面：{shot.visual}。运镜：{shot.camera}。对白/旁白：{shot.narration}。"
-    )
+    prompt = video_prompt(project, shot)
     duration = math.ceil(shot.duration)
     base = config.base_url.rstrip("/")
     if local:
