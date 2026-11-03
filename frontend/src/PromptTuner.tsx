@@ -12,7 +12,22 @@ type Feedback = {
   edited_prompt: string;
   created_at: string;
   snapshot: { video: string; prompt: string };
-  proposal: { video_prompt: string; change_summary: string } | null;
+  proposal: {
+    video_prompt: string;
+    change_summary: string;
+    feedback_summary?: {
+      retain_rules: string[];
+      avoid_rules: string[];
+      optimization_rules: string[];
+    };
+    annotations?: {
+      history_requested: number;
+      history_used: number;
+      total: number;
+      passed: number;
+      failed: number;
+    };
+  } | null;
   applied_source: string | null;
   applied_revision: number | null;
 };
@@ -41,6 +56,12 @@ export function PromptTuner({
   const [shotId, setShotId] = useState("");
   const [edited, setEdited] = useState("");
   const [notes, setNotes] = useState("");
+  const [optimizationMode, setOptimizationMode] = useState("agent");
+  const [feedbackLimit, setFeedbackLimit] = useState(8);
+  const validLimit =
+    Number.isInteger(feedbackLimit) &&
+    feedbackLimit >= 0 &&
+    feedbackLimit <= 50;
   const [records, setRecords] = useState<Feedback[]>([]);
   const [pending, setPending] = useState(false);
   const shot = episode?.shots.find((s) => s.id === shotId) || episode?.shots[0];
@@ -90,6 +111,7 @@ export function PromptTuner({
   const blocked = busy || dirty || pending;
   const approved = project.document.approved_hash === project.content_hash;
   const canTune = mode === "live" && approved && !shot?.locked;
+  const autoTune = canTune && optimizationMode === "agent";
   const saveFeedback = (rating: Feedback["rating"]) =>
     void act(async () => {
       if (!shot) return;
@@ -104,9 +126,10 @@ export function PromptTuner({
         }),
       );
       await reload();
-      if (rating === "unsatisfied" && canTune)
+      if (rating === "unsatisfied" && autoTune)
         await runJob("prompt_tune", {
           feedback_id: row.id,
+          feedback_limit: feedbackLimit,
           shot_id: shot.id,
           episode_id: episode?.id,
         });
@@ -177,6 +200,33 @@ export function PromptTuner({
           onChange={(e) => setNotes(e.target.value)}
         />
       </label>
+      <div className="form-grid below">
+        <label>
+          优化方式
+          <select
+            value={optimizationMode}
+            onChange={(e) => setOptimizationMode(e.target.value)}
+          >
+            <option value="manual">人工修改，手动采用</option>
+            <option value="agent">Agent 总结标注后调优</option>
+          </select>
+        </label>
+        <label>
+          使用历史人工标注数量
+          <input
+            type="number"
+            min={0}
+            max={50}
+            value={feedbackLimit}
+            disabled={optimizationMode === "manual" || blocked}
+            onChange={(e) => setFeedbackLimit(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      <p className="muted-text small">
+        满意记为通过，不满意记为不通过。当前反馈始终使用，另取同一镜头、同一剧本内容下最近{" "}
+        {feedbackLimit} 条历史标注，不足按实际数量；填 0 表示仅使用当前反馈。
+      </p>
       <div className="button-row below">
         <button
           className="secondary"
@@ -188,11 +238,16 @@ export function PromptTuner({
         </button>
         <button
           className="primary"
-          disabled={blocked || !shot?.video || edited.trim().length < 5}
+          disabled={
+            blocked ||
+            !shot?.video ||
+            edited.trim().length < 5 ||
+            (autoTune && !validLimit)
+          }
           onClick={() => saveFeedback("unsatisfied")}
         >
           <ThumbsDown size={15} />
-          {canTune ? "不满意，提交并调优" : "不满意，记录反馈"}
+          {autoTune ? "不满意，提交并调优" : "不满意，记录反馈"}
         </button>
       </div>
       <p className="muted-text small">
@@ -200,7 +255,7 @@ export function PromptTuner({
           ? "先生成或上传镜头视频，再对实际结果反馈。"
           : !canTune
             ? "自动调优需要真实文本模型、已确认剧本及未锁定镜头。"
-            : "每条反馈最多调优 3 次，每次调用一次文本模型；提案由你决定是否采用。"}{" "}
+            : "每条反馈最多调优 3 次，每轮最多两次文本模型调用：先总结人工标注，再生成提示词；提案由你决定是否采用。"}{" "}
         满意反馈用于后续提示词优化参考，不会直接训练模型。
       </p>
       {records
@@ -230,6 +285,43 @@ export function PromptTuner({
                 </span>
               </div>
               <p>{record.notes || "未填写额外说明"}</p>
+              {record.proposal?.feedback_summary && (
+                <div className="feedback-summary">
+                  <h4>人工通过 / 不通过标注总结</h4>
+                  {record.proposal.annotations && (
+                    <p>
+                      实际使用 {record.proposal.annotations.total} 条标注（历史{" "}
+                      {record.proposal.annotations.history_used}/
+                      {record.proposal.annotations.history_requested} 条 + 当前
+                      1 条）；通过 {record.proposal.annotations.passed}{" "}
+                      条，不通过 {record.proposal.annotations.failed} 条。
+                    </p>
+                  )}
+                  {(
+                    [
+                      ["retain_rules", "通过样本：保留什么"],
+                      ["avoid_rules", "不通过样本：避免什么"],
+                      ["optimization_rules", "下一轮：如何优化"],
+                    ] as const
+                  ).map(([key, title]) => (
+                    <div key={key}>
+                      <strong>{title}</strong>
+                      <ul>
+                        {record.proposal!.feedback_summary![key].length ? (
+                          record.proposal!.feedback_summary![key].map(
+                            (rule, i) => <li key={i}>{rule}</li>,
+                          )
+                        ) : (
+                          <li>暂无足够标注依据。</li>
+                        )}
+                      </ul>
+                    </div>
+                  ))}
+                  <small>
+                    以上为 Agent 对人工标注的归纳，请结合实际视频核对。
+                  </small>
+                </div>
+              )}
               <div className="prompt-comparison">
                 <div>
                   <h4>人工版本</h4>
@@ -274,17 +366,24 @@ export function PromptTuner({
                 <button
                   className="text-button"
                   disabled={
-                    blocked || !current || !canTune || attempts.length >= 3
+                    blocked ||
+                    !current ||
+                    !canTune ||
+                    optimizationMode !== "agent" ||
+                    !validLimit ||
+                    attempts.length >= 3
                   }
                   onClick={() =>
                     void runJob("prompt_tune", {
                       feedback_id: record.id,
+                      feedback_limit: feedbackLimit,
                       shot_id: shot?.id,
                       episode_id: episode?.id,
                     })
                   }
                 >
-                  再次调优（{attempts.length}/3）
+                  {attempts.length ? "再次调优" : "根据标注生成提案"}（
+                  {attempts.length}/3）
                 </button>
                 {record.applied_revision === project.revision && (
                   <button

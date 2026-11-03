@@ -2281,3 +2281,22 @@ main {
     padding: 14px;
   }
 }
+
+.feedback-summary {
+  background: #f0f6f2;
+  border: 1px solid #d6e5db;
+  border-radius: 8px;
+  padding: 18px;
+  margin: 16px 0;
+}
+.feedback-summary h4 {
+  margin: 0 0 10px;
+}
+.feedback-summary ul {
+  margin: 8px 0 16px;
+  padding-left: 20px;
+  line-height: 1.9;
+}
+.feedback-summary small {
+  color: #62796a;
+}

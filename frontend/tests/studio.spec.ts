@@ -217,6 +217,25 @@ test("human feedback drives a bounded prompt proposal without changing the scrip
       expect(input.tools).toBeUndefined();
       expect(input.messages[1].content).toContain("动作放慢");
       res.setHeader("content-type", "application/json");
+      if (input.messages[0].content.includes("人工标注总结器")) {
+        res.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    retain_rules: [],
+                    avoid_rules: ["拿信动作过快"],
+                    optimization_rules: ["放慢拿信动作，固定机位"],
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      expect(input.messages[1].content).toContain("拿信动作过快");
       res.end(
         JSON.stringify({
           choices: [
@@ -305,11 +324,18 @@ test("human feedback drives a bounded prompt proposal without changing the scrip
       .getByLabel("人工优化后的生成提示词")
       .fill("保持原人物服饰，动作放慢，固定机位拍摄拿信过程。");
     await page.getByLabel("具体反馈").fill("动作放慢，背景和人物保持不变。");
+    await page.getByLabel("使用历史人工标注数量").fill("2");
     await page.getByRole("button", { name: "不满意，提交并调优" }).click();
     await expect(
       page.getByRole("button", { name: "采用 Agent 提案" }),
     ).toBeEnabled({ timeout: 15000 });
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
+    await expect(
+      page.getByRole("heading", { name: "人工通过 / 不通过标注总结" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("实际使用 1 条标注", { exact: false }),
+    ).toContainText("历史 0/2 条");
     await expect(
       page.getByText("根据人工反馈放慢拿信动作并固定机位。", { exact: true }),
     ).toBeVisible();

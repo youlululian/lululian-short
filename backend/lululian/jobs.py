@@ -9,7 +9,7 @@ from .judge import check_assets, content_hash, review_script
 from .models import JobInput, ProjectDocument, new_id
 from .pipeline import run_pipeline
 from .production_contracts import expected_shot
-from .prompt_agent import optimize_prompt
+from .prompt_agent import optimize_prompt, summarize_feedback
 from .providers import ProviderError, generate_image, generate_script, generate_voice, load_settings
 from .render import media_duration, render_episode
 from .store import now
@@ -120,22 +120,32 @@ class JobRunner:
                 result = check_assets(project, directory)
             elif task.kind == "prompt_tune":
                 feedback = self.feedback.get(pid, task.feedback_id)
-                history = [
-                    {
-                        "rating": f["rating"],
-                        "notes": f["notes"],
-                        "edited_prompt": f["edited_prompt"],
-                    }
-                    for f in reversed(self.feedback.list(pid))
-                    if f["shot_id"] == feedback["shot_id"] and f["id"] != feedback["id"]
-                ]
-                progress(15, "正在依据人工反馈优化视频提示词")
+                history = self.feedback.history(pid, feedback, task.feedback_limit)
+                selected = [*history, feedback]
+                counts = {
+                    "history_requested": task.feedback_limit,
+                    "history_used": len(history),
+                    "total": len(selected),
+                    "passed": sum(f["rating"] == "satisfied" for f in selected),
+                    "failed": sum(f["rating"] == "unsatisfied" for f in selected),
+                    "feedback_ids": [f["id"] for f in selected],
+                }
+                progress(10, f"正在总结 {len(selected)} 条人工通过/不通过标注")
+                summary = summarize_feedback(
+                    [{k: f[k] for k in ("rating", "notes", "edited_prompt")} for f in selected],
+                    settings,
+                )
+                self.store.event(
+                    jid, "human_feedback_summarized", {"summary": summary, "annotations": counts}
+                )
+                progress(55, "正在依据人工标注总结优化视频提示词")
                 proposal = optimize_prompt(
                     feedback["snapshot"]["script"],
                     {k: feedback[k] for k in ("rating", "notes", "edited_prompt")},
-                    history,
+                    summary,
                     settings,
                 )
+                proposal.update(feedback_summary=summary, annotations=counts)
                 self.feedback.proposal(pid, task.feedback_id, proposal)
                 self.store.event(
                     jid, "prompt_proposed", {"feedback_id": task.feedback_id, **proposal}

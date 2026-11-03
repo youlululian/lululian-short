@@ -241,6 +241,23 @@ def test_prompt_agent_uses_feedback_without_tools_and_limits_attempts(client, mo
         assert endpoint == "chat/completions"
         assert "tools" not in payload
         assert "人物不变" in payload["messages"][1]["content"]
+        if "人工标注总结器" in payload["messages"][0]["content"]:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "retain_rules": [],
+                                    "avoid_rules": ["动作过快"],
+                                    "optimization_rules": ["拿信动作放慢，人物不变"],
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+        assert "动作过快" in payload["messages"][1]["content"]
         return {
             "choices": [
                 {
@@ -264,7 +281,7 @@ def test_prompt_agent_uses_feedback_without_tools_and_limits_attempts(client, mo
         )
         assert response.status_code == 202, response.text
         assert wait_job(client, pid, response.json()["id"])["status"] == "succeeded"
-    assert len(calls) == 3
+    assert len(calls) == 6
     assert client.get(f"/api/projects/{pid}").json()["revision"] == record["revision"]
     assert (
         client.post(
@@ -312,3 +329,50 @@ def test_locked_shot_blocks_tuning_and_application(client):
         json={"revision": stored["revision"], "source": "human"},
     )
     assert result.status_code == 409 and "解锁" in result.text
+
+
+def test_annotation_selection_is_bounded_and_scoped_to_shot_and_script(client):
+    record, shot = fixture_video(client)
+    store = client.app.state.runner.feedback
+    labels = [
+        add_feedback(
+            client,
+            record,
+            shot,
+            rating="satisfied" if i % 2 else "unsatisfied",
+            notes=f"人工标注 {i}",
+        )
+        for i in range(5)
+    ]
+    current = add_feedback(client, record, shot, notes="当前反馈")
+    assert [r["id"] for r in store.history(record["id"], current, 2)] == [
+        r["id"] for r in labels[-2:]
+    ]
+    assert store.history(record["id"], current, 0) == []
+    assert len(store.history(record["id"], current, 50)) == 5
+    # A later annotation is not retroactively injected into an older feedback run.
+    add_feedback(client, record, shot, notes="后续反馈")
+    assert len(store.history(record["id"], current, 50)) == 5
+    for limit in (-1, 51):
+        response = client.post(
+            f"/api/projects/{record['id']}/jobs",
+            json={"kind": "prompt_tune", "feedback_id": current["id"], "feedback_limit": limit},
+        )
+        assert response.status_code == 422
+    changed = ProjectDocument.model_validate(record["document"])
+    changed.episodes[0].shots[0].visual = "现在改为在清晨整理书架。"
+    updated = client.app.state.store.save(record["id"], changed, record["revision"])
+    newer = add_feedback(client, updated, shot)
+    assert store.history(record["id"], newer, 50) == []
+    another, other_shot = fixture_video(client)
+    other = add_feedback(client, another, other_shot)
+    assert store.history(another["id"], other, 50) == []
+
+
+def test_summary_context_size_is_checked_before_any_model_call(monkeypatch):
+    def forbidden(*a, **kw):
+        pytest.fail("oversized annotation batch must not call a model")
+
+    monkeypatch.setattr(prompt_agent, "request", forbidden)
+    with pytest.raises(prompt_agent.ProviderError, match="减少使用条数"):
+        prompt_agent.summarize_feedback([{"notes": "a" * 80001}], Settings(mode="live"))

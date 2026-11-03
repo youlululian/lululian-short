@@ -75,6 +75,7 @@ export type Job = {
     overwrite: boolean;
     export_id?: string | null;
     feedback_id?: string | null;
+    feedback_limit?: number;
     max_calls?: number;
     max_rounds?: number;
   };

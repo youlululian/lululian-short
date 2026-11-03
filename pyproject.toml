@@ -1,7 +1,7 @@
 [project]
 name = "lululian-short"
-version = "0.2.0"
-description = "A local-first AI short drama studio"
+version = "0.2.1"
+description = "工业级Agent自动迭代AI网剧仓库"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",

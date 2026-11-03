@@ -56,6 +56,24 @@ class FeedbackStore:
                 )
             ]
 
+    def history(self, pid, feedback, limit):
+        """Select only earlier human labels for this shot and creative version."""
+        with self.store.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM production_feedback WHERE project_id=? AND shot_id=? AND id<>? "
+                "AND created_at<=? AND json_extract(snapshot, '$.content_hash')=? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (
+                    pid,
+                    feedback["shot_id"],
+                    feedback["id"],
+                    feedback["created_at"],
+                    feedback["snapshot"]["content_hash"],
+                    limit,
+                ),
+            ).fetchall()
+        return [self.decode(row) for row in reversed(rows)]
+
     def get(self, pid, fid):
         with self.store.connect() as db:
             row = db.execute(

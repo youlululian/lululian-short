@@ -104,6 +104,7 @@ class JobInput(Model):
     overwrite: bool = False
     max_rounds: int = Field(default=2, ge=1, le=4)
     max_calls: int = Field(default=20, ge=1, le=100)
+    feedback_limit: int = Field(default=8, ge=0, le=50)
     feedback_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     export_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 

@@ -192,7 +192,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="status-dot" />
           <span>本地工作空间</span>
-          <small>V2 · 0.2.0</small>
+          <small>V2 · 0.2.1</small>
         </div>
       </aside>
       <main>

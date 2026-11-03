@@ -37,7 +37,7 @@ def create_app(data_dir: Path | None = None):
         app.state.model_agent.shutdown()
         app.state.runner.shutdown()
 
-    app = FastAPI(title="Lululian Short Studio", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Lululian Short Studio", version="0.2.1", lifespan=lifespan)
     app.state.store = store
     app.include_router(agent_router(app, store))
 
