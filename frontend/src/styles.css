@@ -2300,3 +2300,9 @@ main {
 .feedback-summary small {
   color: #62796a;
 }
+
+.pipeline-prompt-editor { margin: 20px 0; padding: 18px; border: 1px solid #d4e4df; background: #f7fbf9; border-radius: 8px; }
+.pipeline-prompt-editor summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.pipeline-prompt-editor summary svg { vertical-align: middle; margin-right: 8px; }
+.pipeline-prompt-editor p { font-size: 12px; line-height: 1.9; margin: 14px 0; }
+.pipeline-prompt-editor textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 12px; font: inherit; line-height: 1.8; resize: vertical; }

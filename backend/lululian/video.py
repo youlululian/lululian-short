@@ -55,10 +55,11 @@ def video_prompt(project, shot):
     cast = "；".join(
         f"{c.name}：{c.appearance}" for c in project.characters if c.id in shot.characters
     )
-    return (
+    prompt = (
         shot.video_prompt
         or f"风格：{project.style}。场景：{shot.scene}。角色：{cast}。画面：{shot.visual}。运镜：{shot.camera}。对白/旁白：{shot.narration}。"
     )
+    return f"共用视频要求：{project.pipeline_prompts.video}\n镜头提示词：{prompt}"
 
 
 def generate_video(project, shot, settings, directory, progress, nonce=""):

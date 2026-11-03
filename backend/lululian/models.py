@@ -3,6 +3,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .prompt_profiles import PipelinePrompts
+
 
 def new_id() -> str:
     return uuid4().hex
@@ -65,6 +67,7 @@ class ProjectInput(Model):
 
 
 class ProjectDocument(ProjectInput):
+    pipeline_prompts: PipelinePrompts = Field(default_factory=PipelinePrompts)
     approved_hash: str = ""
     characters: list[Character] = Field(default_factory=list, max_length=30)
     episodes: list[Episode] = Field(default_factory=list, max_length=12)

@@ -1,5 +1,55 @@
 import { test, expect } from "@playwright/test";
 
+test("pipeline prompts persist and restore independently by stage", async ({
+  page,
+  request,
+}) => {
+  const project = await (
+    await request.post("/api/projects", {
+      data: {
+        title: "提示词版本验收",
+        premise: "书店店主收到一封来自明天的信。",
+      },
+    })
+  ).json();
+  const defaults = await (await request.get("/api/prompt-defaults")).json();
+  const url = `/api/projects/${project.id}`;
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: /提示词版本验收/ }).click();
+    await page.getByText("流水线提示词 · 人工编辑", { exact: true }).click();
+    await page.getByLabel("编辑提示词阶段").selectOption("video");
+    await page
+      .getByLabel("阶段制作要求")
+      .fill("固定机位，保持人物造型稳定，缓慢展示关键动作。");
+    await page.getByRole("button", { name: "保存修改", exact: true }).click();
+    await expect(page.getByText("已保存至本机", { exact: true })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: /提示词版本验收/ }).click();
+    await page.getByText("流水线提示词 · 人工编辑", { exact: true }).click();
+    await page.getByLabel("编辑提示词阶段").selectOption("video");
+    await expect(page.getByLabel("阶段制作要求")).toHaveValue(
+      "固定机位，保持人物造型稳定，缓慢展示关键动作。",
+    );
+    await page.getByLabel("编辑提示词阶段").selectOption("script");
+    await expect(page.getByLabel("阶段制作要求")).toHaveValue(defaults.script);
+    await page.getByLabel("编辑提示词阶段").selectOption("video");
+    await page.getByLabel("历史提示词版本").selectOption("1");
+    await page.getByRole("button", { name: "载入整套历史提示词" }).click();
+    await expect(page.getByLabel("阶段制作要求")).toHaveValue(defaults.video);
+    await page.getByRole("button", { name: "保存修改", exact: true }).click();
+    await expect(page.getByText("已保存至本机", { exact: true })).toBeVisible();
+    expect(
+      (await (await request.get(url)).json()).document.pipeline_prompts,
+    ).toEqual(defaults);
+    await page.getByLabel("阶段制作要求").fill("临时编辑");
+    await page.getByRole("button", { name: "恢复本阶段默认" }).click();
+    await expect(page.getByLabel("阶段制作要求")).toHaveValue(defaults.video);
+  } finally {
+    await request.delete(url);
+  }
+});
+
 test("create, generate, review, approve and produce storyboard images", async ({
   page,
   request,

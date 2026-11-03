@@ -17,6 +17,7 @@ from .jobs import JobRunner
 from .judge import content_hash
 from .model_agent import ModelAgent
 from .models import JobInput, ProjectDocument, ProjectInput, SaveProject, Settings, new_id
+from .prompt_profiles import PipelinePrompts
 from .providers import load_settings, public_settings, save_settings
 from .render import normalize_image, probe
 from .store import Store
@@ -37,7 +38,7 @@ def create_app(data_dir: Path | None = None):
         app.state.model_agent.shutdown()
         app.state.runner.shutdown()
 
-    app = FastAPI(title="Lululian Short Studio", version="0.2.1", lifespan=lifespan)
+    app = FastAPI(title="Lululian Short Studio", version="0.2.2", lifespan=lifespan)
     app.state.store = store
     app.include_router(agent_router(app, store))
 
@@ -86,6 +87,14 @@ def create_app(data_dir: Path | None = None):
             app.state.model_agent.ensure_idle()
             save_settings(store.root, settings)
         return public_settings(load_settings(store.root))
+
+    @app.get("/api/prompt-defaults")
+    def prompt_defaults():
+        return PipelinePrompts().model_dump()
+
+    @app.get("/api/projects/{pid}/prompt-history")
+    def prompt_history(pid: str):
+        return store.prompt_history(pid)
 
     @app.get("/api/projects")
     def list_projects():

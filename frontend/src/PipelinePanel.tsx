@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Clapperboard, Film, ShieldCheck, Workflow } from "lucide-react";
+import { PipelinePromptEditor } from "./PipelinePromptEditor";
 import { PromptTuner } from "./PromptTuner";
 import { api } from "./api";
 import {
@@ -7,6 +8,7 @@ import {
   Job,
   JobKind,
   Project,
+  PipelinePrompts,
   VideoReview,
   jobNames,
   media,
@@ -75,6 +77,7 @@ export function PipelinePanel({
   approve,
   generateScript,
   onSaved,
+  onPromptsChange,
 }: {
   project: Project;
   jobs: Job[];
@@ -89,6 +92,7 @@ export function PipelinePanel({
   approve: () => void;
   generateScript: () => void;
   onSaved: (p: Project) => void;
+  onPromptsChange: (prompts: PipelinePrompts) => void;
 }) {
   const [stage, setStage] = useState<Stage>("script");
   const [shotId, setShotId] = useState("");
@@ -267,6 +271,12 @@ export function PipelinePanel({
           );
         })}
       </div>
+      <PipelinePromptEditor
+        project={project}
+        busy={busy}
+        onChange={onPromptsChange}
+        notify={notify}
+      />
       {dirty && (
         <p className="console-notice">
           有未保存的修改，请先点击上方「保存修改」。修改剧本后需要重新评审并确认。

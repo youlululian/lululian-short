@@ -192,7 +192,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="status-dot" />
           <span>本地工作空间</span>
-          <small>V2 · 0.2.1</small>
+          <small>V2 · 0.2.2</small>
         </div>
       </aside>
       <main>
@@ -809,6 +809,9 @@ function Workspace({
               approve={approve}
               generateScript={generateScript}
               onSaved={onSave}
+              onPromptsChange={(pipeline_prompts) =>
+                edit({ ...document, pipeline_prompts })
+              }
             />
           )}
           <fieldset disabled={busy} className="editor-fieldset">

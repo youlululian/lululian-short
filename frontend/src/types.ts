@@ -37,7 +37,19 @@ export type ProjectInput = {
   aspect: "9:16" | "16:9" | "1:1";
   episode_count: number;
 };
+export type PipelinePrompts = Record<
+  | "script"
+  | "script_judge"
+  | "image"
+  | "video"
+  | "video_judge"
+  | "feedback_summary"
+  | "prompt_tune"
+  | "video_repair",
+  string
+>;
 export type Document = ProjectInput & {
+  pipeline_prompts?: PipelinePrompts;
   approved_hash: string;
   characters: Character[];
   episodes: Episode[];

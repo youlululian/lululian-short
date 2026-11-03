@@ -103,6 +103,14 @@ class JobRunner:
             self.store.update_job(jid, "running", value, message)
 
         try:
+            self.store.event(
+                jid,
+                "pipeline_prompt_profile",
+                {
+                    "prompts": project.pipeline_prompts.model_dump(),
+                    "content_hash": content_hash(project),
+                },
+            )
             progress(1, "正在准备任务")
             directory = self.store.asset_dir(pid)
             result = {"mode": settings.mode}
@@ -134,6 +142,7 @@ class JobRunner:
                 summary = summarize_feedback(
                     [{k: f[k] for k in ("rating", "notes", "edited_prompt")} for f in selected],
                     settings,
+                    instructions=project.pipeline_prompts.feedback_summary,
                 )
                 self.store.event(
                     jid, "human_feedback_summarized", {"summary": summary, "annotations": counts}
@@ -144,6 +153,7 @@ class JobRunner:
                     {k: feedback[k] for k in ("rating", "notes", "edited_prompt")},
                     summary,
                     settings,
+                    instructions=project.pipeline_prompts.prompt_tune,
                 )
                 proposal.update(feedback_summary=summary, annotations=counts)
                 self.feedback.proposal(pid, task.feedback_id, proposal)
@@ -183,7 +193,10 @@ class JobRunner:
                         raise ValueError("成片来自旧版本，请先重新合成当前版本再复核")
                     ep = next(e for e in project.episodes if e.id == export["episode_id"])
                     report = judge_video(
-                        directory / export["video"], {"episode": ep.model_dump()}, settings
+                        directory / export["video"],
+                        {"episode": ep.model_dump()},
+                        settings,
+                        instructions=project.pipeline_prompts.video_judge,
                     )
                     reports.append({"video": export["video"], "review": report})
                 else:
@@ -208,6 +221,7 @@ class JobRunner:
                             expected_shot(project, shot),
                             settings,
                             directory / shot.image if shot.image else None,
+                            instructions=project.pipeline_prompts.video_judge,
                         )
                         item = {"shot_id": shot.id, "video": shot.video, "review": report}
                         reports.append(item)

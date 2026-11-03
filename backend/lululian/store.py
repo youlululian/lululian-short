@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from .judge import content_hash
 from .models import ProjectDocument, new_id
+from .prompt_profiles import PipelinePrompts
 
 
 def now():
@@ -123,6 +124,37 @@ class Store:
                 (pid, row[0] + 1, document.model_dump_json(), now()),
             )
         return self.get(pid)
+
+    def prompt_history(self, pid):
+        self.get(pid)
+        history, previous = [], None
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT revision,created_at,json_extract(document,'$.pipeline_prompts') AS prompts "
+                "FROM revisions WHERE project_id=? ORDER BY revision DESC",
+                (pid,),
+            )
+            for row in rows:
+                prompts = (
+                    PipelinePrompts.model_validate_json(row["prompts"]).model_dump()
+                    if row["prompts"]
+                    else PipelinePrompts().model_dump()
+                )
+                if prompts == previous:
+                    # Report the revision where this profile became active, not asset saves.
+                    history[-1].update(revision=row["revision"], created_at=row["created_at"])
+                    continue
+                if len(history) == 20:
+                    break
+                history.append(
+                    {
+                        "revision": row["revision"],
+                        "created_at": row["created_at"],
+                        "prompts": prompts,
+                    }
+                )
+                previous = prompts
+        return history
 
     def jobs(self, pid):
         with self.connect() as db:
