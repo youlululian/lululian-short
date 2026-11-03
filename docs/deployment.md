@@ -10,6 +10,15 @@ bash scripts/start.sh
 
 打开 http://127.0.0.1:8000。Docker 方式：`docker compose up --build -d`。
 
+Ubuntu / Debian 直接部署时，先安装视频工具与中文字库：
+
+```bash
+apt-get update
+apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+```
+
+中文字库用于演示画面和字幕叠图。仅安装 FFmpeg 仍可能缺少中文字形；后端优先读取 `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`。可用 `fc-list :lang=zh` 检查系统字体，并通过实际字幕渲染确认显示正常。
+
 Docker 使用名为 `studio-data` 的持久卷。备份此卷即可保留数据库、配置和素材。停止服务时使用 `docker compose down`；不要加 `-v`，否则会删除数据。
 
 本地验收环境未启动 Docker daemon，因此已校验 Compose 配置，但未声称完成镜像构建与容器运行验收。

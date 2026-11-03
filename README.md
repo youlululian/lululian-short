@@ -44,6 +44,8 @@
 
 需要 Python 3.11+、Node.js 22+、uv 和 FFmpeg。
 
+Linux 直接部署还需中文字库，例如 Ubuntu 的 `fonts-noto-cjk`，用于字幕与演示画面；安装步骤见[部署文档](docs/deployment.md)。
+
 ```bash
 uv sync
 npm --prefix frontend ci
