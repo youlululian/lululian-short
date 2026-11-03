@@ -129,6 +129,24 @@ def create_app(data_dir: Path | None = None):
     def create_job(pid: str, body: JobInput):
         return app.state.runner.submit(pid, body)
 
+    @app.get("/api/projects/{pid}/jobs/{jid}/events")
+    def job_events(pid: str, jid: str):
+        if not any(j["id"] == jid for j in store.jobs(pid)):
+            raise HTTPException(404, "任务不存在")
+        return store.events(jid)
+
+    @app.get("/api/projects/{pid}/revisions")
+    def revisions(pid: str):
+        store.get(pid)
+        with store.connect() as db:
+            return [
+                dict(r)
+                for r in db.execute(
+                    "SELECT revision,created_at FROM revisions WHERE project_id=? ORDER BY revision DESC",
+                    (pid,),
+                )
+            ]
+
     @app.post("/api/projects/{pid}/shots/{sid}/upload/{kind}")
     def upload(pid: str, sid: str, kind: str, file: UploadFile):
         if kind not in {"image", "audio", "video"}:

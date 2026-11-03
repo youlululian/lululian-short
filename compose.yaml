@@ -1,0 +1,25 @@
+services:
+  studio:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      AI_MODE: ${AI_MODE:-demo}
+      TEXT_BASE_URL: ${TEXT_BASE_URL:-https://api.deepseek.com}
+      TEXT_API_KEY: ${TEXT_API_KEY:-}
+      TEXT_MODEL: ${TEXT_MODEL:-}
+      VISION_BACKEND: ${VISION_BACKEND:-local}
+      VISION_BASE_URL: ${VISION_BASE_URL:-http://host.docker.internal:8001/v1}
+      VISION_API_KEY: ${VISION_API_KEY:-}
+      VISION_MODEL: ${VISION_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      VIDEO_BACKEND: ${VIDEO_BACKEND:-local}
+      VIDEO_BASE_URL: ${VIDEO_BASE_URL:-http://host.docker.internal:30010/v1}
+      VIDEO_API_KEY: ${VIDEO_API_KEY:-}
+      VIDEO_MODEL: ${VIDEO_MODEL:-MiniMax-H3}
+    volumes:
+      - studio-data:/app/.data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+volumes:
+  studio-data:

@@ -152,6 +152,12 @@ def render_episode(project, episode, directory, progress):
             args += ["-loop", "1", "-i", str(overlay)]
             if shot.audio:
                 args += ["-i", str(directory / shot.audio)]
+            elif (
+                shot.video
+                and shot.use_video_audio
+                and any(s.get("codec_type") == "audio" for s in probe(source)["streams"])
+            ):
+                args += ["-i", str(source)]
             else:
                 args += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
             output = work / f"clip-{index}.mp4"

@@ -13,3 +13,10 @@ test-results/
 playwright-report/
 .DS_Store
 *.log
+
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+models/
+outputs/

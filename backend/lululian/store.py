@@ -3,6 +3,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
 
 from fastapi import HTTPException
 
@@ -15,6 +16,7 @@ def now():
 
 class Store:
     def __init__(self, root: Path):
+        self._connection_lock = RLock()
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.media = self.root / "media"
@@ -37,18 +39,29 @@ class Store:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(project_id)
                     WHERE status IN ('queued','running');
+                CREATE TABLE IF NOT EXISTS events (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,
+                    kind TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL,
+                    FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS revisions (
+                    project_id TEXT NOT NULL, revision INTEGER NOT NULL, document TEXT NOT NULL,
+                    created_at TEXT NOT NULL, PRIMARY KEY(project_id, revision),
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
             """)
 
     @contextmanager
     def connect(self):
-        db = sqlite3.connect(self.db, timeout=15)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys=ON")
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+        with self._connection_lock:
+            db = sqlite3.connect(self.db, timeout=15)
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys=ON")
+            try:
+                with db:
+                    yield db
+            finally:
+                db.close()
 
     def create(self, document: ProjectDocument):
         pid, timestamp = new_id(), now()
@@ -57,6 +70,7 @@ class Store:
                 "INSERT INTO projects VALUES (?, ?, 1, ?, ?)",
                 (pid, document.model_dump_json(), timestamp, timestamp),
             )
+            db.execute("INSERT INTO revisions VALUES (?,?,?,?)", (pid, 1, document.model_dump_json(), timestamp))
         return self.get(pid)
 
     def get(self, pid):
@@ -91,6 +105,10 @@ class Store:
                 "UPDATE projects SET document=?, revision=revision+1, updated_at=? WHERE id=?",
                 (document.model_dump_json(), now(), pid),
             )
+            db.execute(
+                "INSERT OR IGNORE INTO revisions VALUES (?,?,?,?)",
+                (pid, row[0] + 1, document.model_dump_json(), now()),
+            )
         return self.get(pid)
 
     def jobs(self, pid):
@@ -120,3 +138,19 @@ class Store:
         path = self.media / pid
         path.mkdir(exist_ok=True)
         return path
+
+    def event(self, jid, kind, data):
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO events(job_id,kind,data,created_at) VALUES(?,?,?,?)",
+                (jid, kind, json.dumps(data, ensure_ascii=False), now()),
+            )
+
+    def events(self, jid):
+        with self.connect() as db:
+            return [
+                {**dict(r), "data": json.loads(r["data"])}
+                for r in db.execute(
+                    "SELECT * FROM events WHERE job_id=? ORDER BY seq", (jid,)
+                ).fetchall()
+            ]

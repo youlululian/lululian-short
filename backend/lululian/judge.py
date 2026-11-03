@@ -25,7 +25,7 @@ def creative_document(project):
     data = project.model_dump(exclude={"approved_hash"})
     for episode in data["episodes"]:
         for shot in episode["shots"]:
-            for field in ("image", "audio", "video", "locked"):
+            for field in ("image", "audio", "video", "locked", "video_prompt", "use_video_audio"):
                 shot.pop(field, None)
     return data
 

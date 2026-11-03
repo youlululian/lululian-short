@@ -87,7 +87,17 @@ class SaveProject(Model):
 
 
 class JobInput(Model):
-    kind: Literal["script", "judge", "images", "voice", "render", "asset_check", "videos", "video_judge", "pipeline"]
+    kind: Literal[
+        "script",
+        "judge",
+        "images",
+        "voice",
+        "render",
+        "asset_check",
+        "videos",
+        "video_judge",
+        "pipeline",
+    ]
     episode_id: str | None = None
     shot_id: str | None = None
     overwrite: bool = False
@@ -120,9 +130,17 @@ class Settings(Model):
     image: ProviderConfig = Field(default_factory=ProviderConfig)
     voice: ProviderConfig = Field(default_factory=ProviderConfig)
     judge: ProviderConfig = Field(default_factory=ProviderConfig)
-    vision: ProviderConfig = Field(default_factory=lambda: ProviderConfig(base_url="http://127.0.0.1:8001/v1", model="Qwen/Qwen3-VL-8B-Instruct"))
+    vision: ProviderConfig = Field(
+        default_factory=lambda: ProviderConfig(
+            base_url="http://127.0.0.1:8001/v1", model="Qwen/Qwen3-VL-8B-Instruct"
+        )
+    )
     vision_backend: Literal["local", "gemini"] = "local"
-    video: ProviderConfig = Field(default_factory=lambda: ProviderConfig(base_url="http://127.0.0.1:30010/v1", model="MiniMax-H3"))
+    video: ProviderConfig = Field(
+        default_factory=lambda: ProviderConfig(
+            base_url="http://127.0.0.1:30010/v1", model="MiniMax-H3"
+        )
+    )
     video_backend: Literal["local", "minimax"] = "local"
     video_resolution: Literal["480P", "768P", "2K"] = "768P"
     voice_name: str = Field(default="alloy", max_length=100)

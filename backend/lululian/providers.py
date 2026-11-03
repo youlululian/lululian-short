@@ -242,15 +242,21 @@ def generate_script(project: ProjectDocument, settings: Settings):
         ) from exc
 
 
-def download_image(url: str):
-    # Returned image URLs are untrusted; forbid local/private destinations and redirects.
+def public_media_url(url: str):
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise ProviderError("生图服务返回了不安全的图片地址")
+        raise ProviderError("服务返回了不安全的素材地址")
     try:
         addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 443)
         if any(not ip_address(item[4][0]).is_global for item in addresses):
-            raise ProviderError("图片地址不允许访问本机或私有网络")
+            raise ProviderError("素材地址不允许访问本机或私有网络")
+    except OSError as exc:
+        raise ProviderError("素材地址无法解析") from exc
+
+
+def download_image(url: str):
+    public_media_url(url)
+    try:
         with httpx.stream("GET", url, timeout=60, follow_redirects=False) as response:
             response.raise_for_status()
             data = bytearray()
@@ -259,7 +265,7 @@ def download_image(url: str):
                 if len(data) > 20 * 1024 * 1024:
                     raise ProviderError("图片超过 20 MB 限制")
             return bytes(data)
-    except (httpx.HTTPError, OSError) as exc:
+    except httpx.HTTPError as exc:
         raise ProviderError("无法下载生成的图片") from exc
 
 

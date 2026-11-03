@@ -1,0 +1,12 @@
+{
+  "backend_revision": "1e8ae1d59c1baaae6c4c85fef717a44682b0fbd5",
+  "height": 480,
+  "width": 832,
+  "num_frames": 124,
+  "rank": 16,
+  "learning_rate": 0.00005,
+  "epochs": 3,
+  "repeat": 10,
+  "encoder_weights": "MiniMax/MiniMax-H3:FL2VA/text_encoder/model*.safetensors,MiniMax/MiniMax-H3:FL2VA/video_vae/source/model.safetensors,MiniMax/MiniMax-H3:FL2VA/audio_vae/model.safetensors",
+  "transformer_weights": "MiniMax/MiniMax-H3:FL2VA/transformer/model*.safetensors"
+}

@@ -6,9 +6,12 @@ from fastapi import HTTPException
 
 from .judge import check_assets, content_hash, review_script
 from .models import JobInput, ProjectDocument, new_id
+from .pipeline import expected_shot, run_pipeline
 from .providers import ProviderError, generate_image, generate_script, generate_voice, load_settings
 from .render import media_duration, render_episode
 from .store import now
+from .video import generate_video
+from .vision import judge_video
 
 
 class JobRunner:
@@ -41,7 +44,7 @@ class JobRunner:
                     raise HTTPException(404, "剧集不存在")
                 if task.shot_id and task.shot_id not in {s.id for s in shots}:
                     raise HTTPException(404, "镜头不存在")
-                if task.kind == "render" and not task.episode_id:
+                if task.kind in {"render", "pipeline"} and not task.episode_id:
                     raise HTTPException(422, "请选择要导出的剧集")
                 if task.kind == "voice" and settings.mode == "demo":
                     raise HTTPException(422, "演示模式没有配音服务，请上传音频或配置真实配音接口")
@@ -49,6 +52,8 @@ class JobRunner:
                     "images",
                     "voice",
                     "render",
+                    "videos",
+                    "pipeline",
                 } and project.approved_hash != content_hash(project):
                     raise HTTPException(409, "请先执行剧本评审并人工确认当前版本，再生成素材或合成")
             jid = new_id()
@@ -83,6 +88,68 @@ class JobRunner:
             elif task.kind == "asset_check":
                 progress(20, "正在检查素材是否可解码")
                 result = check_assets(project, directory)
+            elif task.kind == "pipeline":
+                result = run_pipeline(
+                    project,
+                    task,
+                    settings,
+                    directory,
+                    lambda doc: self.store.save(pid, doc, worker=True),
+                    lambda kind, data: self.store.event(jid, kind, data),
+                    progress,
+                )
+                result["revision"] = self.store.get(pid)["revision"]
+            elif task.kind == "video_judge":
+                reports = []
+                if task.export_id:
+                    exports = [
+                        j
+                        for j in self.store.jobs(pid)
+                        if j["status"] == "succeeded"
+                        and j["result"]
+                        and j["result"].get("video") == f"{task.export_id}.mp4"
+                    ]
+                    if not exports:
+                        raise ValueError("找不到该成片记录")
+                    export = exports[0]["result"]
+                    if export.get("revision") != self.store.get(pid)["revision"]:
+                        raise ValueError("成片来自旧版本，请先重新合成当前版本再复核")
+                    ep = next(e for e in project.episodes if e.id == export["episode_id"])
+                    report = judge_video(
+                        directory / export["video"], {"episode": ep.model_dump()}, settings
+                    )
+                    reports.append({"video": export["video"], "review": report})
+                else:
+                    selected = [
+                        s
+                        for e in project.episodes
+                        if not task.episode_id or task.episode_id == e.id
+                        for s in e.shots
+                        if not task.shot_id or task.shot_id == s.id
+                    ]
+                    if not selected or any(not s.video for s in selected):
+                        raise ValueError("请先为所选镜头生成或上传视频")
+                    if len(selected) > task.max_calls:
+                        raise ValueError("所选镜头数量超过调用次数上限")
+                    for i, shot in enumerate(selected):
+                        progress(
+                            round(i / len(selected) * 90) + 1,
+                            f"正在评审镜头 {i + 1}/{len(selected)}",
+                        )
+                        report = judge_video(
+                            directory / shot.video,
+                            expected_shot(project, shot),
+                            settings,
+                            directory / shot.image if shot.image else None,
+                        )
+                        item = {"shot_id": shot.id, "video": shot.video, "review": report}
+                        reports.append(item)
+                        self.store.event(jid, "video_review", item)
+                result = {
+                    "scope": "video",
+                    "reports": reports,
+                    "passed": all(r["review"]["passed"] for r in reports),
+                }
             elif task.kind == "render":
                 episode = next(e for e in project.episodes if e.id == task.episode_id)
                 result = {
@@ -91,7 +158,7 @@ class JobRunner:
                     "revision": self.store.get(pid)["revision"],
                 }
             else:
-                field = "image" if task.kind == "images" else "audio"
+                field = {"images": "image", "voice": "audio", "videos": "video"}[task.kind]
                 shots = [
                     s
                     for e in project.episodes
@@ -110,6 +177,15 @@ class JobRunner:
                     )
                     if task.kind == "images":
                         shot.image = generate_image(project, shot, settings, directory)
+                    elif task.kind == "videos":
+                        shot.video = generate_video(
+                            project,
+                            shot,
+                            settings,
+                            directory,
+                            lambda msg: progress(round(index / len(shots) * 95) + 1, msg),
+                            nonce=jid if task.overwrite else "",
+                        )
                     else:
                         filename = generate_voice(shot, settings, directory)
                         duration = media_duration(directory / filename)

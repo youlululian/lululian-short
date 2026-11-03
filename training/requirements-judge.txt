@@ -1,0 +1,6 @@
+torch>=2.6
+transformers>=4.57,<6
+peft>=0.17,<1
+accelerate>=1.6,<2
+torchcodec>=0.7
+av>=14
