@@ -1,7 +1,7 @@
 [project]
 name = "lululian-short"
 version = "0.2.2"
-description = "工业级Agent自动迭代AI网剧仓库"
+description = "工业级 Agent 自动迭代 AI 视频、AI 动漫、AI 短剧、AI 漫剧自动化生成工具"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
